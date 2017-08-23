@@ -14,8 +14,8 @@ License: Public Domain
 URL: http://www.monperrus.net/martin/halccli
 
 Usage:
-  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--set_title <title>] [--set_pages <pages>] [--set_doi <doi>] [--set_volume <volume>] [--set_institution <institution>] 
-  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--get_title] [--get_pages] [--get_doi] [--get_volume]  [--get_institution]
+  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--set_title <title>] [--set_pages <pages>] [--set_doi <doi>] [--set_volume <volume>] [--set_institution <institution>] [--set_number <number>] 
+  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--get_title] [--get_pages] [--get_doi] [--get_volume]  [--get_institution]  [--get_number]
   halccli.py --id <id> --tei [--prod]
  
 Options:
@@ -34,6 +34,8 @@ Options:
   --set_volume <volume>      Sets the volume
   --get_institution            Gets the institution
   --set_institution <institution>      Sets the institution
+  --get_number            Gets the technical report number
+  --set_number <number>      Sets the technical report number
 
 Examples:
     halccli.py hal-01037383 --get_title
@@ -170,6 +172,22 @@ class TEIHalEntry:
             institution=etree.Element('authority',attrib={'type':'institution'})
             institution.text=newinstitution
             parent.append(institution)
+        pass
+    
+    # <idno type="reportNumber">hal-01144026</idno>
+    def get_number(self):
+        return self.tei.xpath(".//tei:monogr/tei:idno[@type='reportNumber']", namespaces=self.ns)[0].text
+    def set_number(self, newnumber):
+        parent=self.tei.xpath(".//tei:monogr", namespaces=self.ns)[0]
+        number=parent.xpath("./tei:idno[@type='reportNumber']", namespaces=self.ns)
+        if len(number)>0:
+            number[0].text = newnumber
+            pass
+        else:
+            number=etree.Element('idno',attrib={'type':'reportNumber'})
+            number.text=newnumber
+            # number comes as first child in monogr according to aofr-sword schema
+            parent.insert(0,number)
         pass
     
     def get_doi(self):
