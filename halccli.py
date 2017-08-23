@@ -14,8 +14,8 @@ License: Public Domain
 URL: http://www.monperrus.net/martin/halccli
 
 Usage:
-  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--set_title <title>] [--set_pages <pages>] [--set_doi <doi>] [--set_volume <volume>] 
-  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--get_title] [--get_pages] [--get_doi] [--get_volume]
+  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--set_title <title>] [--set_pages <pages>] [--set_doi <doi>] [--set_volume <volume>] [--set_institution <institution>] 
+  halccli.py --id <id> [--user <user>] [--pass <pass>] [--prod] [--get_title] [--get_pages] [--get_doi] [--get_volume]  [--get_institution]
   halccli.py --id <id> --tei [--prod]
  
 Options:
@@ -32,6 +32,8 @@ Options:
   --set_doi <doi>      Sets the DOI
   --get_volume            Gets the volume
   --set_volume <volume>      Sets the volume
+  --get_institution            Gets the institution
+  --set_institution <institution>      Sets the institution
 
 Examples:
     halccli.py hal-01037383 --get_title
@@ -103,6 +105,9 @@ class TEIHalEntry:
         #for i in self.tei.xpath('.//tei:org[@type="institution"]', namespaces=self.ns): i.attrib['type']='laboratory'        
         for i in self.tei.xpath('.//tei:idno[@type="stamp"]', namespaces=self.ns): 
             if i.attrib.has_key('p'): del i.attrib['p']
+        for i in self.tei.xpath('.//tei:idno[idHal="stamp"]', namespaces=self.ns): 
+            if i.attrib.has_key('notation'): del i.attrib['notation']
+
         
         return self
 
@@ -153,6 +158,20 @@ class TEIHalEntry:
             else: imprint.append(volume)
         pass
         
+    def get_institution(self):
+        return self.tei.xpath(".//tei:monogr/tei:authority[@type='institution']", namespaces=self.ns)[0].text
+    def set_institution(self, newinstitution):
+        parent=self.tei.xpath(".//tei:monogr", namespaces=self.ns)[0]
+        institution=parent.xpath("./tei:authority[@type='institution']", namespaces=self.ns)
+        if len(institution)>0:
+            institution[0].text = newinstitution
+            pass
+        else:
+            institution=etree.Element('authority',attrib={'type':'institution'})
+            institution.text=newinstitution
+            parent.append(institution)
+        pass
+    
     def get_doi(self):
         return self.tei.xpath(".//tei:idno[@type='doi']", namespaces=self.ns)[0].text
     def set_doi(self, newdoi):
