@@ -1,6 +1,10 @@
 #!/usr/bin/python
 #coding: utf8
 # Documentation at https://github.com/monperrus/halccli.py
+#
+# Example (on preprod): 
+# $ python halccli.py --id hal-01462980 --tei
+# $ python halccli.py --id hal-01462980 --set_comment foo2
 
 from lxml import etree,objectify
 import feedgenerator
@@ -31,56 +35,34 @@ class TEIHalEntry:
     """
     
     # where to GET the entries (using the /"tei" url suffix), this is the Cont-IRI of te SWORD specification
-    server_get='http://hal-preprod.archives-ouvertes.fr/'
+    server_get='https://hal-preprod.archives-ouvertes.fr/'
     
     # where to PUT changes
-    server_put='http://api-preprod.archives-ouvertes.fr/sword/'
+    server_put='https://api-preprod.archives-ouvertes.fr/sword/'
     
+    # where to post new data
+    server_post='https://api-preprod.archives-ouvertes.fr/sword/hal/'
+
     # HAL login data that are sent using HTTP Basic authentification
     server_user = "test_ws"
     server_password = "test"
 
     ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+
+    def __init__(self):
+        pass
     
-    def clean_tei(self):
-        """ unfortunately, the TEI produced by HAL itself (in GET) is not compatible with HAL in PUT. so we remove or modify 
-        some nodes from the retrieved TEI XML document """        
-
-        # removing inappropriate nodes
-        for i in self.tei.xpath('.//tei:teiHeader', namespaces=self.ns): i.getparent().remove(i)
-        for i in self.tei.xpath('.//tei:seriesStmt', namespaces=self.ns): i.getparent().remove(i)
-        for i in self.tei.xpath('.//tei:respStmt', namespaces=self.ns): i.getparent().remove(i)
-        for i in self.tei.xpath('.//tei:editionStmt', namespaces=self.ns): i.getparent().remove(i)
-        for i in self.tei.xpath('.//tei:publicationStmt', namespaces=self.ns): i.getparent().remove(i)
-        for i in self.tei.xpath('.//tei:editor', namespaces=self.ns): i.getparent().remove(i)
-        
-        #for i in self.tei.xpath('.//tei:titleStmt', namespaces=self.ns): i.clear()
-        #for i in self.tei.xpath('.//tei:org', namespaces=self.ns): 
-            #for x in list(i) : i.remove(x)
-        
-        # quickfixing incorrect nodes
-        for i in self.tei.xpath('.//tei:country', namespaces=self.ns): i.text=''
-        for i in self.tei.xpath('.//tei:language', namespaces=self.ns): i.text=''
-        for i in self.tei.xpath('.//node()[@status]', namespaces=self.ns): del i.attrib['status']
-        for i in self.tei.xpath('.//tei:listOrg[@type="structures"]', namespaces=self.ns): i.attrib['type']='laboratories'        
-        #for i in self.tei.xpath('.//tei:org[@type="institution"]', namespaces=self.ns): i.attrib['type']='laboratory'        
-        for i in self.tei.xpath('.//tei:idno[@type="stamp"]', namespaces=self.ns): 
-            if i.attrib.has_key('p'): del i.attrib['p']
-        for i in self.tei.xpath('.//tei:idno[idHal="stamp"]', namespaces=self.ns): 
-            if i.attrib.has_key('notation'): del i.attrib['notation']
-
-        
-        return self
-
-    def __init__(self,hal_id):
+    def load(self,hal_id):
         """ creates a TEIHalEntry object from it hal_id (a string, eg "hal-01037383")"""
-        
         self.hal_id=hal_id
-        tei_url=self.server_get+hal_id+"/tei"
-        doc = requests.get(tei_url).text
+        self.tei_url=self.server_get+hal_id+"/tei"
+        self.reload();
+
+    def reload(self):
+        """ creates a TEIHalEntry object from it hal_id (a string, eg "hal-01037383")"""
+        doc = requests.get(self.tei_url).text
         doc=doc.encode('utf-8')
         self.tei = etree.XML(doc)
-        self.clean_tei();
 
     def get_title(self):
         return self.tei.xpath('.//tei:analytic/tei:title', namespaces=self.ns)[0].text
@@ -119,6 +101,11 @@ class TEIHalEntry:
             else: imprint.append(volume)
         pass
         
+    def get_license(self):
+        return self.tei.xpath('.//tei:availability/tei:licence', namespaces=self.ns)[0].attrib['target']
+    def get_license_text(self):
+        return self.tei.xpath('.//tei:availability/tei:licence', namespaces=self.ns)[0].text
+
     def get_institution(self):
         return self.tei.xpath(".//tei:monogr/tei:authority[@type='institution']", namespaces=self.ns)[0].text
     def set_institution(self, newinstitution):
@@ -165,6 +152,20 @@ class TEIHalEntry:
             else: biblStruct.append(doi)
         pass
 
+    def get_comment(self):
+        return self.tei.xpath(".//tei:notesStmt/tei:note[@type='commentary']", namespaces=self.ns)[0].text
+    def set_comment(self, newcomment):
+        biblStruct = self.tei.xpath(".//tei:notesStmt", namespaces=self.ns)[0]
+        comments=biblStruct.xpath("./tei:note[@type='commentary']", namespaces=self.ns)
+        if len(comments)>0:
+            comments[0].text = newcomment
+            pass
+        else:
+            comment=etree.Element('note', attrib={'type':'commentary'})
+            comment.text=newcomment
+            biblStruct.append(comment)
+        pass
+
     def is_proceedings(self):
         note = self.tei.xpath(".//tei:notesStmt/tei:note[@type='proceedings']", namespaces=self.ns)
         return len(note)>0 and note[0].text == "Yes"
@@ -180,6 +181,19 @@ class TEIHalEntry:
                 settlement.text="und"
                 meeting.xpath("./tei:date", namespaces=self.ns)[-1].addnext(settlement)
             
+    def post(self):
+        """ sends a new element to the server using the SWORD protocol 
+        curl -X POST -d @art.xml -v -u test_ws:test https://api.archives-ouvertes.fr/sword/hal/ -H "Packaging:http://purl.org/net/sword-types/AOfr" -H "Content-Type:text/xml"
+        """
+        self.add_missing_elements()
+        #print self.to_string()
+        #return
+        if self.server_password == '-': self.server_password = getpass.getpass('password: ')
+        r = requests.post(self.server_post, auth=(self.server_user, self.server_password), data=etree.tostring(self.tei) , headers = {"Packaging": "http://purl.org/net/sword-types/AOfr", "Content-Type":"text/xml"}
+#                          , proxies = { "http": "localhost:8080"} # with mitm
+        ) 
+        if r.status_code != 202: raise Exception("POST failed: "+r.text)
+        return r
 
     def put(self):
         """ sends changes to the server using the SWORD protocol """
@@ -193,32 +207,6 @@ class TEIHalEntry:
     
     def to_string(self):
         return etree.tostring(self.tei)
-
-def test():
-    
-    def randomword(length): return ''.join(random.choice(string.lowercase) for i in range(length))
-
-    # testing doi
-    # there is some validation on the DOI, it must start with 10.
-    doi="10."+randomword(4)
-    r=cli(['--id', 'hal-01022302', '--set_doi', doi])
-    r=cli(['--id', 'hal-01022302', '--get_doi'])
-    assert r['doi'] == doi
-    
-    # testing pages 
-    pages=randomword(4)
-    r=cli(['--id', 'hal-01022302', '--set_pages', pages])
-    r=cli(['--id', 'hal-01022302', '--get_pages'])
-    assert r['pages'] == pages
-        
-    # testing title
-    title=randomword(4)
-    r=cli(['--id', 'hal-01037383', '--set_title', title])
-    r=cli(['--id', 'hal-01037383', '--get_title'])
-    assert r['title'] == title
-    
-    r=cli(['--id', 'hal-01037383', '--tei'])
-    assert r.startswith('<TEI xmlns="http://www.tei-c.org/ns/1.0"')
 
 def cli(argv):
     arguments = docopt(open(os.path.join(os.path.dirname(__file__),'README.txt')).read(), argv=argv)
@@ -238,7 +226,8 @@ def cli(argv):
     TEIHalEntry.server_password = arguments['--pass']
     
     if len(getter)>0:
-        t = TEIHalEntry(arguments['--id'])
+        t = TEIHalEntry()
+        t.load(arguments['--id'])
         res={}
         for m in getter:
             #print m
@@ -246,7 +235,8 @@ def cli(argv):
         return res
 
     if len(setter)>0:
-        t = TEIHalEntry(arguments['--id'])
+        t = TEIHalEntry()
+        t.load(arguments['--id'])
         for m in setter:
             #print m[2:],arguments[m]
             getattr(t,m[2:])(arguments[m])
@@ -254,7 +244,8 @@ def cli(argv):
         return "success"
     
     if arguments['--tei']:
-        t = TEIHalEntry(arguments['--id'])
+        t = TEIHalEntry()
+        t.load(arguments['--id'])
         return t.to_string()
   
 def cli_pp(argv):
