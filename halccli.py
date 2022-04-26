@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #coding: utf8
 # Documentation at https://github.com/monperrus/halccli.py
 #
@@ -8,7 +8,6 @@
 
 from lxml import etree,objectify
 import feedgenerator
-import urllib2
 import os
 import inspect
 import cgi
@@ -28,9 +27,9 @@ class TEIHalEntry:
        represents a remote HAL entry
     Example:
       t = TEIHalEntry("hal-01037383")
-      print t.get_title()
+      print(t.get_title())
       t.set_title("foo bar")
-      print t.put()
+      print(t.put())
 
     """
     
@@ -251,13 +250,14 @@ def cli(argv):
 def cli_pp(argv):
     r = cli(argv)
     if type(r) == str: return r
-    return json.dumps(r,indent=2)
+    return r
+    #return json.dumps(r,indent=2)
 
 if __name__ == '__main__':
     if sys.argv[1] == "--test":
        test()
        sys.exit()       
-    print cli_pp(sys.argv[1:]) 
+    print(cli_pp(sys.argv[1:]))
 
 
 
